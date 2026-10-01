@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 tests/
 
-# internal files - kept on disk, never committed
+# project docs (kept alongside the repo, not published)
 MISSION.md
 RUNBOOK.md
 SPEC.md
