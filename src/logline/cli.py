@@ -18,11 +18,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument(
         "-b", "--body", default="", help="Entry body text (default: empty)."
     )
+    p_new.add_argument(
+        "--mood", default="", help="Entry mood text (default: empty)."
+    )
+    p_new.add_argument(
+        "--tags",
+        default="",
+        help="Comma-separated tags, e.g. --tags t1,t2 (default: empty).",
+    )
 
-    sub.add_parser("list", help="List entries, newest first.")
+    p_list = sub.add_parser("list", help="List entries, newest first.")
+    p_list.add_argument("--mood", default=None, help="Filter by mood.")
+    p_list.add_argument("--tag", default=None, help="Filter by a single tag.")
+    p_list.add_argument(
+        "--since", default=None, help="Earliest calendar date (YYYY-MM-DD)."
+    )
+    p_list.add_argument(
+        "--until", default=None, help="Latest calendar date (YYYY-MM-DD)."
+    )
 
     p_show = sub.add_parser("show", help="Show a single entry.")
     p_show.add_argument("id", type=int, help="Numeric entry id.")
+
+    p_search = sub.add_parser(
+        "search", help="Full-text search over title and body."
+    )
+    p_search.add_argument("query", help="FTS5 query string.")
 
     return parser
 
@@ -35,13 +56,28 @@ def main(argv: list[str] | None = None) -> int:
         if not args.title.strip():
             parser.error("title must not be empty")
         with db.connect() as conn:
-            entry_id = db.create_entry(conn, args.title, args.body)
+            entry_id = db.create_entry(
+                conn, args.title, args.body, args.mood, args.tags
+            )
         print(entry_id)
         return 0
 
     if args.command == "list":
+        try:
+            if args.since is not None:
+                db.validate_date(args.since)
+            if args.until is not None:
+                db.validate_date(args.until)
+        except ValueError as exc:
+            parser.error(str(exc))
         with db.connect() as conn:
-            entries = db.list_entries(conn)
+            entries = db.list_entries(
+                conn,
+                mood=args.mood,
+                tag=args.tag,
+                since=args.since,
+                until=args.until,
+            )
         for entry in entries:
             print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
         return 0
@@ -54,9 +90,25 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(entry["title"])
         print(entry["created_at"])
+        if entry["mood"]:
+            print(f"mood: {entry['mood']}")
+        if entry["tags"]:
+            print(f"tags: {entry['tags']}")
         if entry["body"]:
             print()
             print(entry["body"])
+        return 0
+
+    if args.command == "search":
+        if not args.query.strip():
+            parser.error("query must not be empty")
+        with db.connect() as conn:
+            try:
+                entries = db.search_entries(conn, args.query)
+            except ValueError as exc:
+                parser.error(str(exc))
+        for entry in entries:
+            print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
         return 0
 
     parser.error(f"unknown command {args.command!r}")
