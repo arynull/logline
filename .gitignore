@@ -2,8 +2,9 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+tests/
 
-# internal ops files (Hermes orchestration) - kept on disk, never committed
+# internal files - kept on disk, never committed
 MISSION.md
 RUNBOOK.md
 SPEC.md

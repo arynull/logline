@@ -175,10 +175,3 @@ LOGLINE_DATA_DIR=/tmp/demo logline list
 
 A corrupt (non-SQLite) database file produces a clean
 `database is not a valid logline database` message on stderr, exit 1.
-
-## Running tests
-
-```sh
-python3 -m pytest -q
-python3 -m ruff check .
-```
