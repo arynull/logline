@@ -1,6 +1,7 @@
 """SQLite storage layer for logline entries."""
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sqlite3
@@ -11,6 +12,12 @@ from itertools import pairwise
 from pathlib import Path
 
 SCHEMA_VERSION = 2
+
+MAX_TITLE_LENGTH = 500
+
+
+class InvalidDatabaseError(ValueError):
+    """Raised when the db file is not a usable logline database."""
 
 SCHEMA_V2 = """\
 CREATE TABLE IF NOT EXISTS entries(
@@ -126,16 +133,42 @@ def init_db(conn: sqlite3.Connection) -> None:
         _ensure_v2_objects(conn)
         conn.commit()
     else:
-        raise RuntimeError(f"unsupported logline schema version: {version}")
+        raise InvalidDatabaseError(
+            f"unsupported logline schema version: {version}"
+        )
 
 
 def connect(db_path: Path | None = None) -> sqlite3.Connection:
-    """Open the database, creating the data dir and schema on demand."""
+    """Open the database, creating the data dir and schema on demand.
+
+    Raise InvalidDatabaseError when the file exists but is not a
+    valid SQLite database (or otherwise unreadable); missing and
+    zero-length files are treated as fresh databases.
+    """
     path = db_path if db_path is not None else get_db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    init_db(conn)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise InvalidDatabaseError(
+            f"cannot open logline database: {exc}"
+        ) from exc
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+    except sqlite3.DatabaseError as exc:
+        if conn is not None:
+            with contextlib.suppress(sqlite3.Error):
+                conn.close()
+        lowered = str(exc).lower()
+        if "unable to open" in lowered or "readonly" in lowered:
+            raise InvalidDatabaseError(
+                f"cannot open logline database: {exc}"
+            ) from exc
+        raise InvalidDatabaseError(
+            "database is not a valid logline database"
+        ) from exc
     return conn
 
 
@@ -172,11 +205,16 @@ def create_entry(
 ) -> int:
     """Insert an entry and return its id.
 
-    Raise ValueError when the title is empty or whitespace-only.
+    Raise ValueError when the title is empty/whitespace-only or longer
+    than MAX_TITLE_LENGTH characters.
     ``created_at`` overrides the timestamp (mainly for tests/tools).
     """
     if not title.strip():
         raise ValueError("title must not be empty")
+    if len(title) > MAX_TITLE_LENGTH:
+        raise ValueError(
+            f"title must be at most {MAX_TITLE_LENGTH} characters"
+        )
     cursor = conn.execute(
         "INSERT INTO entries (title, body, created_at, mood, tags)"
         " VALUES (?, ?, ?, ?, ?)",

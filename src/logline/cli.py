@@ -3,21 +3,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
-from . import db
+from . import __version__, db
 from . import report as report_mod
+
+EXAMPLES = """\
+examples:
+  logline new "Morning pages" -b "Coffee and code."
+  logline list --since 2026-09-01
+  logline search harbor
+  logline report --month -o report.md
+"""
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="logline", description="Minimal CLI journaling tool."
+        prog="logline",
+        description="Minimal CLI journaling tool.",
+        epilog=EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"logline {__version__}"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_new = sub.add_parser("new", help="Create a new journal entry.")
-    p_new.add_argument("title", help="Entry title (must not be empty).")
+    p_new.add_argument(
+        "title",
+        help=f"Entry title (must not be empty, max {db.MAX_TITLE_LENGTH} chars).",
+    )
     p_new.add_argument(
         "-b", "--body", default="", help="Entry body text (default: empty)."
     )
@@ -97,127 +115,168 @@ def _write_output_file(path_str: str, content: str) -> int | None:
     return None
 
 
+def _open_db() -> sqlite3.Connection | None:
+    """Open the logline DB, printing a clean error on failure."""
+    try:
+        return db.connect()
+    except db.InvalidDatabaseError as exc:
+        print(str(exc), file=sys.stderr)
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "new":
-        if not args.title.strip():
-            parser.error("title must not be empty")
-        with db.connect() as conn:
-            entry_id = db.create_entry(
-                conn, args.title, args.body, args.mood, args.tags
-            )
-        print(entry_id)
-        return 0
+    try:
+        if args.command == "new":
+            if not args.title.strip():
+                parser.error("title must not be empty")
+            if len(args.title) > db.MAX_TITLE_LENGTH:
+                parser.error(
+                    f"title must be at most {db.MAX_TITLE_LENGTH} characters"
+                )
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entry_id = db.create_entry(
+                    conn, args.title, args.body, args.mood, args.tags
+                )
+            print(entry_id)
+            return 0
 
-    if args.command == "list":
-        try:
-            if args.since is not None:
-                db.validate_date(args.since)
-            if args.until is not None:
-                db.validate_date(args.until)
-        except ValueError as exc:
-            parser.error(str(exc))
-        with db.connect() as conn:
-            entries = db.list_entries(
-                conn,
-                mood=args.mood,
-                tag=args.tag,
-                since=args.since,
-                until=args.until,
-            )
-        for entry in entries:
-            print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
-        return 0
-
-    if args.command == "show":
-        with db.connect() as conn:
-            entry = db.get_entry(conn, args.id)
-        if entry is None:
-            print(f"no entry with id {args.id}", file=sys.stderr)
-            return 1
-        print(entry["title"])
-        print(entry["created_at"])
-        if entry["mood"]:
-            print(f"mood: {entry['mood']}")
-        if entry["tags"]:
-            print(f"tags: {entry['tags']}")
-        if entry["body"]:
-            print()
-            print(entry["body"])
-        return 0
-
-    if args.command == "search":
-        if not args.query.strip():
-            parser.error("query must not be empty")
-        with db.connect() as conn:
+        if args.command == "list":
             try:
-                entries = db.search_entries(conn, args.query)
+                if args.since is not None:
+                    db.validate_date(args.since)
+                if args.until is not None:
+                    db.validate_date(args.until)
             except ValueError as exc:
                 parser.error(str(exc))
-        for entry in entries:
-            print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
-        return 0
-
-    if args.command == "stats":
-        with db.connect() as conn:
-            stats = db.compute_stats(conn)
-        print(f"Total entries: {stats.total}")
-        print(f"Current streak: {stats.current_streak} day(s)")
-        print(f"Longest streak: {stats.longest_streak} day(s)")
-        print("Moods:")
-        for mood, count in stats.moods:
-            print(f"  {mood}: {count}")
-        print("Top tags:")
-        for tag, count in stats.tags:
-            print(f"  {tag}: {count}")
-        return 0
-
-    if args.command == "report":
-        span = "month" if args.month else "week"
-        start, end = report_mod.period_range(span)
-        with db.connect() as conn:
-            by_day = report_mod.fetch_period_entries(conn, start, end)
-        text = report_mod.render_report(by_day, start, end)
-        if args.output is not None:
-            failed = _write_output_file(args.output, text)
-            if failed is not None:
-                return failed
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entries = db.list_entries(
+                    conn,
+                    mood=args.mood,
+                    tag=args.tag,
+                    since=args.since,
+                    until=args.until,
+                )
+            for entry in entries:
+                print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
             return 0
-        print(text, end="")
-        return 0
 
-    if args.command == "export":
-        with db.connect() as conn:
-            payload = report_mod.serialize_export(
-                report_mod.export_entries(conn)
-            )
-        if args.output is not None:
-            failed = _write_output_file(args.output, payload + "\n")
-            if failed is not None:
-                return failed
+        if args.command == "show":
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entry = db.get_entry(conn, args.id)
+            if entry is None:
+                print(f"no entry with id {args.id}", file=sys.stderr)
+                return 1
+            print(entry["title"])
+            print(entry["created_at"])
+            if entry["mood"]:
+                print(f"mood: {entry['mood']}")
+            if entry["tags"]:
+                print(f"tags: {entry['tags']}")
+            if entry["body"]:
+                print()
+                print(entry["body"])
             return 0
-        print(payload)
-        return 0
 
-    if args.command == "import":
-        src = Path(args.file).expanduser()
-        try:
-            raw = src.read_text(encoding="utf-8")
-        except OSError as exc:
-            parser.error(f"cannot read {args.file}: {exc}")
-        try:
-            items = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            parser.error(f"invalid JSON in {args.file}: {exc}")
-        with db.connect() as conn:
+        if args.command == "search":
+            if not args.query.strip():
+                parser.error("query must not be empty")
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                try:
+                    entries = db.search_entries(conn, args.query)
+                except ValueError as exc:
+                    parser.error(str(exc))
+            for entry in entries:
+                print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
+            return 0
+
+        if args.command == "stats":
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                stats = db.compute_stats(conn)
+            print(f"Total entries: {stats.total}")
+            print(f"Current streak: {stats.current_streak} day(s)")
+            print(f"Longest streak: {stats.longest_streak} day(s)")
+            print("Moods:")
+            for mood, count in stats.moods:
+                print(f"  {mood}: {count}")
+            print("Top tags:")
+            for tag, count in stats.tags:
+                print(f"  {tag}: {count}")
+            return 0
+
+        if args.command == "report":
+            span = "month" if args.month else "week"
+            start, end = report_mod.period_range(span)
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                by_day = report_mod.fetch_period_entries(conn, start, end)
+            text = report_mod.render_report(by_day, start, end)
+            if args.output is not None:
+                failed = _write_output_file(args.output, text)
+                if failed is not None:
+                    return failed
+                return 0
+            print(text, end="")
+            return 0
+
+        if args.command == "export":
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                payload = report_mod.serialize_export(
+                    report_mod.export_entries(conn)
+                )
+            if args.output is not None:
+                failed = _write_output_file(args.output, payload + "\n")
+                if failed is not None:
+                    return failed
+                return 0
+            print(payload)
+            return 0
+
+        if args.command == "import":
+            src = Path(args.file).expanduser()
             try:
-                count = report_mod.import_entries(conn, items)
-            except ValueError as exc:
-                parser.error(str(exc))
-        print(f"imported {count} entries")
-        return 0
+                raw = src.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                parser.error(f"cannot read {args.file}: {exc}")
+            try:
+                items = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                parser.error(f"invalid JSON in {args.file}: {exc}")
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                try:
+                    count = report_mod.import_entries(conn, items)
+                except ValueError as exc:
+                    parser.error(str(exc))
+            print(f"imported {count} entries")
+            return 0
 
-    parser.error(f"unknown command {args.command!r}")
-    return 2
+        parser.error(f"unknown command {args.command!r}")
+        return 2
+    except (sqlite3.Error, OSError, UnicodeError) as exc:
+        print(f"logline: error: {exc}", file=sys.stderr)
+        return 1
