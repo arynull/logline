@@ -45,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search.add_argument("query", help="FTS5 query string.")
 
+    sub.add_parser(
+        "stats",
+        help="Show journal analytics (days are UTC calendar dates).",
+        description="Journal analytics. A streak is consecutive UTC "
+        "calendar days (from created_at) with at least one entry.",
+    )
+
     return parser
 
 
@@ -109,6 +116,20 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error(str(exc))
         for entry in entries:
             print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
+        return 0
+
+    if args.command == "stats":
+        with db.connect() as conn:
+            stats = db.compute_stats(conn)
+        print(f"Total entries: {stats.total}")
+        print(f"Current streak: {stats.current_streak} day(s)")
+        print(f"Longest streak: {stats.longest_streak} day(s)")
+        print("Moods:")
+        for mood, count in stats.moods:
+            print(f"  {mood}: {count}")
+        print("Top tags:")
+        for tag, count in stats.tags:
+            print(f"  {tag}: {count}")
         return 0
 
     parser.error(f"unknown command {args.command!r}")

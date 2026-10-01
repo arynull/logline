@@ -1,6 +1,6 @@
 [project]
 name = "logline"
-version = "0.2.0"
+version = "0.3.0"
 description = "Minimal CLI journaling tool."
 requires-python = ">=3.12"
 
