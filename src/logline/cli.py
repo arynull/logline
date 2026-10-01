@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from . import db
+from . import report as report_mod
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,7 +55,46 @@ def build_parser() -> argparse.ArgumentParser:
         "calendar days (from created_at) with at least one entry.",
     )
 
+    p_report = sub.add_parser(
+        "report",
+        help="Render a Markdown report (days are UTC calendar dates).",
+        description="Markdown report of recent entries. Days are UTC "
+        "calendar dates from created_at. --week (default): last 7 days "
+        "including today; --month: last 30 days including today.",
+    )
+    span = p_report.add_mutually_exclusive_group()
+    span.add_argument(
+        "--week", action="store_true", help="Last 7 UTC days (default)."
+    )
+    span.add_argument("--month", action="store_true", help="Last 30 UTC days.")
+    p_report.add_argument(
+        "-o", "--output", default=None, help="Write the report to FILE."
+    )
+
+    p_export = sub.add_parser(
+        "export", help="Export all entries as JSON (oldest first)."
+    )
+    p_export.add_argument(
+        "-o", "--output", default=None, help="Write the JSON to FILE."
+    )
+
+    p_import = sub.add_parser("import", help="Import entries from JSON.")
+    p_import.add_argument("file", help="JSON file produced by logline export.")
+
     return parser
+
+
+def _write_output_file(path_str: str, content: str) -> int | None:
+    """Write ``content`` to ``path_str``; return 1 on failure, else None."""
+    dest = Path(path_str).expanduser()
+    try:
+        if dest.parent != Path():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        print(f"cannot write to {path_str}: {exc}", file=sys.stderr)
+        return 1
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -130,6 +172,51 @@ def main(argv: list[str] | None = None) -> int:
         print("Top tags:")
         for tag, count in stats.tags:
             print(f"  {tag}: {count}")
+        return 0
+
+    if args.command == "report":
+        span = "month" if args.month else "week"
+        start, end = report_mod.period_range(span)
+        with db.connect() as conn:
+            by_day = report_mod.fetch_period_entries(conn, start, end)
+        text = report_mod.render_report(by_day, start, end)
+        if args.output is not None:
+            failed = _write_output_file(args.output, text)
+            if failed is not None:
+                return failed
+            return 0
+        print(text, end="")
+        return 0
+
+    if args.command == "export":
+        with db.connect() as conn:
+            payload = report_mod.serialize_export(
+                report_mod.export_entries(conn)
+            )
+        if args.output is not None:
+            failed = _write_output_file(args.output, payload + "\n")
+            if failed is not None:
+                return failed
+            return 0
+        print(payload)
+        return 0
+
+    if args.command == "import":
+        src = Path(args.file).expanduser()
+        try:
+            raw = src.read_text(encoding="utf-8")
+        except OSError as exc:
+            parser.error(f"cannot read {args.file}: {exc}")
+        try:
+            items = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            parser.error(f"invalid JSON in {args.file}: {exc}")
+        with db.connect() as conn:
+            try:
+                count = report_mod.import_entries(conn, items)
+            except ValueError as exc:
+                parser.error(str(exc))
+        print(f"imported {count} entries")
         return 0
 
     parser.error(f"unknown command {args.command!r}")
