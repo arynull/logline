@@ -84,6 +84,21 @@ FTS5 match over title+body, best match first (bm25), `list`-style
 output. No match prints nothing, exit 0. Empty query or invalid FTS5
 syntax (e.g. `"unbalanced`, `*`) → stderr, exit 2.
 
+### delete
+
+```sh
+logline delete 1
+logline delete 1 -y
+```
+
+Without `-y`, prints a one-line `<id>  <created_at>  <title>`
+summary and asks `Delete entry <id> "<title>"? [y/N]: `. Only `y` or
+`yes` (case-insensitive) proceeds; anything else — including a closed
+stdin — prints `Aborted.`, exit 1, entry kept. With `-y`/`--yes` the
+entry is deleted without prompting. Success prints `deleted <id>`,
+exit 0. Unknown or negative id prints `no entry with id N` on stderr,
+exit 1.
+
 ### stats
 
 ```sh

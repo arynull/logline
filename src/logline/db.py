@@ -278,6 +278,16 @@ def get_entry(conn: sqlite3.Connection, entry_id: int) -> sqlite3.Row | None:
     ).fetchone()
 
 
+def delete_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
+    """Delete one entry by id; return True when a row was removed.
+
+    The ``entries_ad`` FTS trigger keeps ``entries_fts`` in sync.
+    """
+    cursor = conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def search_entries(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
     """Full-text search over title+body, best match first (bm25).
 

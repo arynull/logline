@@ -66,6 +66,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search.add_argument("query", help="FTS5 query string.")
 
+    p_delete = sub.add_parser("delete", help="Delete a single entry.")
+    p_delete.add_argument("id", type=int, help="Numeric entry id.")
+    p_delete.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Delete without asking for confirmation.",
+    )
+
     sub.add_parser(
         "stats",
         help="Show journal analytics (days are UTC calendar dates).",
@@ -273,6 +282,34 @@ def main(argv: list[str] | None = None) -> int:
                 except ValueError as exc:
                     parser.error(str(exc))
             print(f"imported {count} entries")
+            return 0
+
+        if args.command == "delete":
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entry = db.get_entry(conn, args.id)
+                if entry is None:
+                    print(f"no entry with id {args.id}", file=sys.stderr)
+                    return 1
+                if not args.yes:
+                    print(
+                        f"{entry['id']}  {entry['created_at']}  {entry['title']}"
+                    )
+                    try:
+                        answer = input(
+                            f'Delete entry {entry["id"]} '
+                            f'"{entry["title"]}"? [y/N]: '
+                        )
+                    except (EOFError, OSError):
+                        print("Aborted.")
+                        return 1
+                    if answer.strip().lower() not in ("y", "yes"):
+                        print("Aborted.")
+                        return 1
+                db.delete_entry(conn, args.id)
+            print(f"deleted {args.id}")
             return 0
 
         parser.error(f"unknown command {args.command!r}")
