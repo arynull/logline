@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check src/
+
+  install-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Clean install from source
+        run: |
+          python -m venv /tmp/ci-venv
+          /tmp/ci-venv/bin/pip install --quiet .
+          /tmp/ci-venv/bin/logline --version
+      - name: CLI smoke test (new / list / search)
+        run: |
+          export LOGLINE_DATA_DIR="$(mktemp -d)"
+          LL=/tmp/ci-venv/bin/logline
+          $LL new "CI smoke entry" -b "hello world" --tags ci,smoke
+          $LL list | grep -q "CI smoke entry"
+          $LL search "hello" | grep -q "CI smoke entry"
+          echo "smoke OK"

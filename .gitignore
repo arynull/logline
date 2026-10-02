@@ -11,3 +11,10 @@ SPEC.md
 PROGRESS.md
 ERROR_LOG.md
 prompts/
+
+# python build artifacts
+build/
+dist/
+*.egg-info/
+.coverage
+.venv/
