@@ -75,6 +75,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete without asking for confirmation.",
     )
 
+    p_edit = sub.add_parser("edit", help="Edit an existing entry.")
+    p_edit.add_argument("id", type=int, help="Numeric entry id.")
+    p_edit.add_argument("--title", default=None, help="New title.")
+    p_edit.add_argument("--body", default=None, help="New body text.")
+    p_edit.add_argument("--mood", default=None, help="New mood text.")
+    p_edit.add_argument(
+        "--tags", default=None, help="New comma-separated tags ('' clears)."
+    )
+    p_edit.add_argument(
+        "--clear-mood", action="store_true", help="Set mood to empty."
+    )
+    p_edit.add_argument(
+        "--clear-tags", action="store_true", help="Set tags to empty."
+    )
+
     sub.add_parser(
         "stats",
         help="Show journal analytics (days are UTC calendar dates).",
@@ -310,6 +325,45 @@ def main(argv: list[str] | None = None) -> int:
                         return 1
                 db.delete_entry(conn, args.id)
             print(f"deleted {args.id}")
+            return 0
+
+        if args.command == "edit":
+            changes: dict[str, str] = {}
+            if args.title is not None:
+                if not args.title.strip():
+                    parser.error("title must not be empty")
+                if len(args.title) > db.MAX_TITLE_LENGTH:
+                    parser.error(
+                        f"title must be at most {db.MAX_TITLE_LENGTH} characters"
+                    )
+                changes["title"] = args.title
+            if args.body is not None:
+                changes["body"] = args.body
+            if args.mood is not None:
+                if args.clear_mood:
+                    parser.error("--mood and --clear-mood are mutually exclusive")
+                changes["mood"] = args.mood
+            if args.clear_mood:
+                changes["mood"] = ""
+            if args.tags is not None:
+                if args.clear_tags:
+                    parser.error("--tags and --clear-tags are mutually exclusive")
+                changes["tags"] = args.tags
+            if args.clear_tags:
+                changes["tags"] = ""
+            if not changes:
+                parser.error(
+                    "nothing to edit: give at least one of --title, --body,"
+                    " --mood, --tags, --clear-mood, --clear-tags"
+                )
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                if not db.update_entry(conn, args.id, **changes):
+                    print(f"no entry with id {args.id}", file=sys.stderr)
+                    return 1
+            print(f"updated {args.id}")
             return 0
 
         parser.error(f"unknown command {args.command!r}")

@@ -99,6 +99,27 @@ entry is deleted without prompting. Success prints `deleted <id>`,
 exit 0. Unknown or negative id prints `no entry with id N` on stderr,
 exit 1.
 
+### edit
+
+```sh
+logline edit 1 --title "Morning pages (revised)"
+logline edit 1 --body "Coffee, tea, and code."
+logline edit 1 --mood focused --tags "work, deep"
+logline edit 1 --clear-mood
+logline edit 1 --tags ""
+```
+
+Changes only the fields you name; everything else (including
+`created_at`) is preserved. At least one of `--title`, `--body`,
+`--mood`, `--tags`, `--clear-mood`, `--clear-tags` is required —
+none → stderr, exit 2. `--tags` normalizes exactly like `new`
+(`"a, b ,,c"` → `"a,b,c"`), and `--tags ""` clears tags. `--clear-mood`
+/ `--clear-tags` empty their field; combining one with its set flag
+(`--mood x --clear-mood`) → stderr, exit 2. Title validation matches
+`new`: empty/whitespace or over 500 characters → exit 2. Success
+prints `updated <id>`, exit 0. Unknown or negative id prints
+`no entry with id N` on stderr, exit 1.
+
 ### stats
 
 ```sh

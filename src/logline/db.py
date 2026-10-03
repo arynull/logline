@@ -288,6 +288,52 @@ def delete_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def update_entry(
+    conn: sqlite3.Connection,
+    entry_id: int,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    mood: str | None = None,
+    tags: str | None = None,
+) -> bool:
+    """Update only the given fields of one entry; None means unchanged.
+
+    Return False when no entry carries that id. ``created_at`` is never
+    touched (an edit is not a new entry) and the ``entries_au`` FTS
+    trigger keeps ``entries_fts`` in sync. Tags are normalized like in
+    create_entry; an invalid title raises ValueError.
+    """
+    if get_entry(conn, entry_id) is None:
+        return False
+    if title is not None:
+        if not title.strip():
+            raise ValueError("title must not be empty")
+        if len(title) > MAX_TITLE_LENGTH:
+            raise ValueError(
+                f"title must be at most {MAX_TITLE_LENGTH} characters"
+            )
+    assignments: list[str] = []
+    params: list[str] = []
+    for column, value in (
+        ("title", title),
+        ("body", body),
+        ("mood", mood),
+        ("tags", None if tags is None else normalize_tags(tags)),
+    ):
+        if value is not None:
+            assignments.append(f"{column} = ?")
+            params.append(value)
+    if not assignments:
+        return True
+    params.append(str(entry_id))
+    conn.execute(
+        f"UPDATE entries SET {', '.join(assignments)} WHERE id = ?", params
+    )
+    conn.commit()
+    return True
+
+
 def search_entries(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
     """Full-text search over title+body, best match first (bm25).
 
