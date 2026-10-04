@@ -66,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_search.add_argument("query", help="FTS5 query string.")
 
+    p_random = sub.add_parser("random", help="Show a random journal entry.")
+    p_random.add_argument("--mood", default=None, help="Filter by mood.")
+    p_random.add_argument("--tag", default=None, help="Filter by a single tag.")
+
     p_delete = sub.add_parser("delete", help="Delete a single entry.")
     p_delete.add_argument("id", type=int, help="Numeric entry id.")
     p_delete.add_argument(
@@ -148,6 +152,19 @@ def _open_db() -> sqlite3.Connection | None:
         return None
 
 
+def _print_entry(entry: sqlite3.Row) -> None:
+    """Print a single entry the same way as ``show``."""
+    print(entry["title"])
+    print(entry["created_at"])
+    if entry["mood"]:
+        print(f"mood: {entry['mood']}")
+    if entry["tags"]:
+        print(f"tags: {entry['tags']}")
+    if entry["body"]:
+        print()
+        print(entry["body"])
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -202,15 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             if entry is None:
                 print(f"no entry with id {args.id}", file=sys.stderr)
                 return 1
-            print(entry["title"])
-            print(entry["created_at"])
-            if entry["mood"]:
-                print(f"mood: {entry['mood']}")
-            if entry["tags"]:
-                print(f"tags: {entry['tags']}")
-            if entry["body"]:
-                print()
-                print(entry["body"])
+            _print_entry(entry)
             return 0
 
         if args.command == "search":
@@ -226,6 +235,20 @@ def main(argv: list[str] | None = None) -> int:
                     parser.error(str(exc))
             for entry in entries:
                 print(f"{entry['id']}  {entry['created_at']}  {entry['title']}")
+            return 0
+
+        if args.command == "random":
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entry = db.get_random_entry(
+                    conn, mood=args.mood, tag=args.tag
+                )
+            if entry is None:
+                print("no entries found", file=sys.stderr)
+                return 1
+            _print_entry(entry)
             return 0
 
         if args.command == "stats":

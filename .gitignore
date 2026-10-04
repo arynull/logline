@@ -10,6 +10,7 @@ RUNBOOK.md
 SPEC.md
 PROGRESS.md
 ERROR_LOG.md
+RESEARCH.md
 prompts/
 
 # python build artifacts
@@ -18,3 +19,4 @@ dist/
 *.egg-info/
 .coverage
 .venv/
+.aider*

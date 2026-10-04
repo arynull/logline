@@ -84,6 +84,19 @@ FTS5 match over title+body, best match first (bm25), `list`-style
 output. No match prints nothing, exit 0. Empty query or invalid FTS5
 syntax (e.g. `"unbalanced`, `*`) → stderr, exit 2.
 
+### random
+
+```sh
+logline random
+logline random --tag work
+logline random --mood happy
+```
+
+Prints a single random entry in the same format as `show`. `--tag`
+and `--mood` filter the pool the same way as `list` (exact mood
+match, single-tag membership; combined with AND). No matching entry
+prints `no entries found` on stderr, exit 1.
+
 ### delete
 
 ```sh

@@ -270,6 +270,40 @@ def list_entries(
     return list(conn.execute(query, params))
 
 
+def get_random_entry(
+    conn: sqlite3.Connection,
+    *,
+    mood: str | None = None,
+    tag: str | None = None,
+) -> sqlite3.Row | None:
+    """Return one random entry matching the mood/tag filters, if any.
+
+    Matching semantics are the same as in ``list_entries``.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    if mood is not None:
+        clauses.append("mood = ?")
+        params.append(mood)
+    if tag is not None:
+        wanted = tag.strip()
+        if not wanted:
+            clauses.append("1 = 0")
+        else:
+            escaped = (
+                wanted.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            clauses.append("(',' || tags || ',') LIKE ? ESCAPE '\\'")
+            params.append(f"%,{escaped},%")
+    query = "SELECT id, title, body, created_at, mood, tags FROM entries"
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY RANDOM() LIMIT 1"
+    return conn.execute(query, params).fetchone()
+
+
 def get_entry(conn: sqlite3.Connection, entry_id: int) -> sqlite3.Row | None:
     """Return one entry by id, or None when it does not exist."""
     return conn.execute(
