@@ -44,11 +44,17 @@ calendar dates derived from `created_at`.
 
 ```sh
 logline new "Morning pages" -b "Coffee and code." --mood happy --tags work,fun
+cat notes.txt | logline new "Day" --stdin
 ```
 
 Creates an entry and prints its numeric id. Title must be non-empty
 and at most 500 characters. Tags are comma-separated; surrounding
 spaces are stripped and empty items dropped (`"a, b ,,c"` → `"a,b,c"`).
+
+`--stdin` reads the entry body from stdin until EOF (empty stdin
+stores an empty body). It cannot be combined with a non-empty
+`-b`/`--body` (explicit `-b ""` is allowed and stdin still wins).
+When typing interactively, end input with Ctrl-D.
 
 ### list
 

@@ -13,6 +13,7 @@ from . import report as report_mod
 EXAMPLES = """\
 examples:
   logline new "Morning pages" -b "Coffee and code."
+  cat notes.txt | logline new "Day" --stdin
   logline list --since 2026-09-01
   logline search harbor
   logline report --month -o report.md
@@ -46,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--tags",
         default="",
         help="Comma-separated tags, e.g. --tags t1,t2 (default: empty).",
+    )
+    p_new.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the entry body from stdin (end input with Ctrl-D when typing).",
     )
 
     p_list = sub.add_parser("list", help="List entries, newest first.")
@@ -130,6 +136,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _read_stdin_body() -> str:
+    try:
+        return sys.stdin.read()
+    except (OSError, ValueError, EOFError):
+        return ""
+
+
 def _write_output_file(path_str: str, content: str) -> int | None:
     """Write ``content`` to ``path_str``; return 1 on failure, else None."""
     dest = Path(path_str).expanduser()
@@ -177,12 +190,15 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error(
                     f"title must be at most {db.MAX_TITLE_LENGTH} characters"
                 )
+            if args.stdin and args.body:
+                parser.error("--stdin and --body cannot be used together")
+            body = _read_stdin_body() if args.stdin else args.body
             conn_ctx = _open_db()
             if conn_ctx is None:
                 return 1
             with conn_ctx as conn:
                 entry_id = db.create_entry(
-                    conn, args.title, args.body, args.mood, args.tags
+                    conn, args.title, body, args.mood, args.tags
                 )
             print(entry_id)
             return 0
