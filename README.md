@@ -189,6 +189,33 @@ Days newest-first, entries within a day newest-first,
 when mood or tags are set; the body line only when non-empty. Empty
 period prints the header plus a `No entries.` line.
 
+### calendar
+
+```sh
+logline calendar
+logline calendar --month 2026-10
+```
+
+ASCII month-calendar grid (week starts Monday) where UTC days with at
+least one entry are marked with `*`. `--month YYYY-MM` selects the
+month (default: current UTC month). Invalid `--month` (`2026-13`,
+`bogus`, ...) → stderr, exit 2. Example with entries on the 5th, 7th,
+9th and 13th:
+
+```text
+    October 2026
+Mo Tu We Th Fr Sa Su
+             1   2   3   4
+ 5*  6   7*  8   9* 10  11
+12  13* 14  15  16  17  18
+19  20  21  22  23  24  25
+26  27  28  29  30  31
+* = day(s) with entries
+```
+
+A valid month with no entries prints the full grid with no `*`
+markers (legend line still present), exit 0.
+
 ### export / import
 
 ```sh

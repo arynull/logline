@@ -411,6 +411,11 @@ def _entry_days(conn: sqlite3.Connection) -> set[date]:
     return days
 
 
+def get_entry_days(conn: sqlite3.Connection) -> set[date]:
+    """Return UTC calendar days with at least one entry."""
+    return _entry_days(conn)
+
+
 def compute_stats(
     conn: sqlite3.Connection, today: date | None = None
 ) -> Stats:

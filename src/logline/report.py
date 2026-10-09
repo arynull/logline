@@ -6,7 +6,9 @@ means UTC calendar date derived from ``created_at``.
 """
 from __future__ import annotations
 
+import calendar
 import json
+import re
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -17,6 +19,8 @@ EXPORT_KEYS = ("id", "title", "body", "created_at", "mood", "tags")
 
 WEEK_DAYS = 7
 MONTH_DAYS = 30
+
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 
 def period_range(span: str = "week", today: date | None = None) -> tuple[date, date]:
@@ -161,3 +165,40 @@ def import_entries(conn: sqlite3.Connection, items: Any) -> int:
         raise
     conn.commit()
     return len(prepared)
+
+
+def parse_month(value: str) -> tuple[int, int]:
+    """Validate YYYY-MM and return (year, month)."""
+    if not _MONTH_RE.match(value):
+        raise ValueError(f"bad month format: {value!r} (expected YYYY-MM)")
+    year_s, mon_s = value.split("-")
+    year, mon = int(year_s), int(mon_s)
+    if not 1 <= mon <= 12:
+        raise ValueError(f"bad month format: {value!r} (expected YYYY-MM)")
+    try:
+        date(year, mon, 1)
+    except ValueError:
+        raise ValueError(f"bad month format: {value!r} (expected YYYY-MM)") from None
+    return year, mon
+
+
+def render_calendar(year: int, month: int, entry_days: set[date]) -> str:
+    """Render an ASCII month calendar marking entry days with *."""
+    title = f"{calendar.month_name[month]} {year}"
+    lines = [title.center(20).rstrip(), "Mo Tu We Th Fr Sa Su"]
+    for week in calendar.monthcalendar(year, month):
+        last = 0
+        for i, day in enumerate(week):
+            if day != 0:
+                last = i
+        trimmed = week[: last + 1]
+        cells: list[str] = []
+        for day in trimmed:
+            if day == 0:
+                cells.append("   ")
+            else:
+                marker = "*" if date(year, month, day) in entry_days else " "
+                cells.append(f"{day:2d}{marker}")
+        lines.append(" ".join(cells).rstrip())
+    lines.append("* = day(s) with entries")
+    return "\n".join(lines) + "\n"

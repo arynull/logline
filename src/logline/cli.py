@@ -5,6 +5,7 @@ import argparse
 import json
 import sqlite3
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__, db
@@ -121,6 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     span.add_argument("--month", action="store_true", help="Last 30 UTC days.")
     p_report.add_argument(
         "-o", "--output", default=None, help="Write the report to FILE."
+    )
+
+    p_cal = sub.add_parser(
+        "calendar",
+        help="Show an ASCII month calendar marking entry days.",
+        description="ASCII month calendar where days with at least one "
+        "entry are marked with *.",
+    )
+    p_cal.add_argument(
+        "--month",
+        default=None,
+        metavar="YYYY-MM",
+        help="Month to show as YYYY-MM (default: current UTC month).",
     )
 
     p_export = sub.add_parser(
@@ -298,6 +312,25 @@ def main(argv: list[str] | None = None) -> int:
                 if failed is not None:
                     return failed
                 return 0
+            print(text, end="")
+            return 0
+
+        if args.command == "calendar":
+            month_str = (
+                args.month
+                if args.month is not None
+                else datetime.now(UTC).strftime("%Y-%m")
+            )
+            try:
+                year, mon = report_mod.parse_month(month_str)
+            except ValueError as exc:
+                parser.exit(2, f"{parser.prog}: error: {exc}\n")
+            conn_ctx = _open_db()
+            if conn_ctx is None:
+                return 1
+            with conn_ctx as conn:
+                entry_days = db.get_entry_days(conn)
+            text = report_mod.render_calendar(year, mon, entry_days)
             print(text, end="")
             return 0
 
