@@ -138,7 +138,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_export = sub.add_parser(
-        "export", help="Export all entries as JSON (oldest first)."
+        "export", help="Export entries as JSON (oldest first)."
+    )
+    p_export.add_argument(
+        "--since", default=None, help="Earliest calendar date (YYYY-MM-DD)."
+    )
+    p_export.add_argument(
+        "--until", default=None, help="Latest calendar date (YYYY-MM-DD)."
+    )
+    p_export.add_argument(
+        "--tag", default=None, help="Filter by a single tag."
     )
     p_export.add_argument(
         "-o", "--output", default=None, help="Write the JSON to FILE."
@@ -335,12 +344,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "export":
+            try:
+                if args.since is not None:
+                    db.validate_date(args.since)
+                if args.until is not None:
+                    db.validate_date(args.until)
+            except ValueError as exc:
+                parser.error(str(exc))
             conn_ctx = _open_db()
             if conn_ctx is None:
                 return 1
             with conn_ctx as conn:
                 payload = report_mod.serialize_export(
-                    report_mod.export_entries(conn)
+                    report_mod.export_entries(
+                        conn,
+                        since=args.since,
+                        until=args.until,
+                        tag=args.tag,
+                    )
                 )
             if args.output is not None:
                 failed = _write_output_file(args.output, payload + "\n")

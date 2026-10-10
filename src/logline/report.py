@@ -97,13 +97,25 @@ def render_report(
     return "\n".join(lines) + "\n"
 
 
-def export_entries(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Return all entries as dicts, oldest first."""
-    rows = conn.execute(
-        "SELECT id, title, body, created_at, mood, tags"
-        " FROM entries ORDER BY id ASC"
-    ).fetchall()
-    return [{key: row[key] for key in EXPORT_KEYS} for row in rows]
+def export_entries(
+    conn: sqlite3.Connection,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    tag: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return entries as dicts (oldest first), AND-combining filters.
+
+    ``since``/``until`` are inclusive YYYY-MM-DD calendar dates compared
+    against the entry's date; ``tag`` matches a single tag exactly
+    (same semantics as ``db.list_entries``). Invalid values raise
+    ValueError.
+    """
+    rows = db.list_entries(conn, tag=tag, since=since, until=until)
+    return [
+        {key: row[key] for key in EXPORT_KEYS}
+        for row in reversed(rows)
+    ]
 
 
 def serialize_export(entries: list[dict[str, Any]]) -> str:

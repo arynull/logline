@@ -220,12 +220,17 @@ markers (legend line still present), exit 0.
 
 ```sh
 logline export
+logline export --since 2026-09-01 --until 2026-10-01
+logline export --tag work
 logline export -o backup.json
 logline import backup.json
 # imported 3 entries
 ```
 
-`export` prints a JSON array of ALL entries, oldest first. `import`
+`export` prints a JSON array of entries, oldest first. Optional
+`--since`/`--until` are inclusive `YYYY-MM-DD` dates compared to the
+entry's calendar date and `--tag` matches a single tag exactly
+(AND-combined; bad date → stderr, exit 2). `import`
 inserts every item as a NEW entry (new ids), preserving `created_at`,
 `mood`, `tags` (tags normalized); extra keys ignored. Import is
 all-or-nothing: missing file, invalid JSON, non-list data, or an item
